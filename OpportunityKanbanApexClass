@@ -1,0 +1,80 @@
+public class OpportunityKanbanController {
+	@AuraEnabled(cacheable=true)
+    public static OpportunityKanbanController.wrapper  getTopOpportunities(){
+        OpportunityKanbanController.wrapper wrapperResponse = new OpportunityKanbanController.wrapper();
+          List<Opportunity>  opps= [SELECT Id, Name,Approval_Status__c,CloseDate, Account.name, StageName FROM Opportunity
+            	WHERE StageName IN ('Closed Won', 'Closed Lost', 'Proposal/Price Quote', 'Needs Analysis','Prospecting','Id. Decision Makers')
+                ORDER BY LastModifiedDate DESC NULLS LAST ];    
+        List<Opportunity> oppList = new List<Opportunity>();
+        Set<String> oppSet = new Set<String>();
+                 
+        for(Opportunity op : opps){
+            if( op.Approval_Status__c !=null && op.Approval_Status__c =='Approved' ){
+                oppList.add(op);
+                oppSet.add(op.StageName);
+            }
+        }
+   
+         for(Opportunity op : opps){
+            if( op.Approval_Status__c == null ){
+                oppList.add(op);
+                oppSet.add(op.StageName);
+            }
+        }
+        wrapperResponse.opportunities = oppList;
+
+            String objectName = 'Opportunity';
+            String fieldName ='StageName';
+            Map<String,Integer> stageNameMap = new Map<String,Integer>();
+            Schema.SObjectType s = Schema.getGlobalDescribe().get(objectName) ;
+            Schema.DescribeSObjectResult r = s.getDescribe() ;
+            Map<String,Schema.SObjectField> fields = r.fields.getMap() ;
+            Schema.DescribeFieldResult fieldResult = fields.get(fieldName).getDescribe();
+            List<Schema.PicklistEntry> ple = fieldResult.getPicklistValues();
+            for( Schema.PicklistEntry pickListVal : ple){
+                if(oppSet.contains(pickListVal.getValue())){
+                    if(!stageNameMap.containsKey(pickListVal.getValue())){
+                        stageNameMap.put(pickListVal.getValue(), 0);
+                    }
+                }
+            }
+            for(Opportunity opp: oppList){
+                if(stageNameMap.containsKey(opp.StageName)){
+                    Integer count = 0;
+                    count = stageNameMap.get(opp.StageName);
+                    stageNameMap.put(opp.StageName, ++count);
+                }
+            }
+            List<OpportunityKanbanController.stageObject> pickValList = new List<OpportunityKanbanController.stageObject>();
+            for(String stage: stageNameMap.keySet()){
+                OpportunityKanbanController.stageObject pickVal = new OpportunityKanbanController.stageObject();
+                pickVal.stage = stage;
+                pickVal.noRecords = stageNameMap.get(stage);
+                pickValList.add(pickVal);
+            }
+            wrapperResponse.pickVals = pickValList;
+
+
+        return wrapperResponse;
+    }
+    @AuraEnabled
+    public static OpportunityKanbanController.wrapper updateOpprtuity(String recordId, String stageName){
+        if(recordId != null && stageName != null){
+            Update new Opportunity(id = recordId , StageName = stageName);
+        }
+        return OpportunityKanbanController.getTopOpportunities();
+    }
+    public class wrapper{
+        @AuraEnabled
+        public List<Opportunity> opportunities = new List<Opportunity>(); 
+        @AuraEnabled
+        public List<OpportunityKanbanController.stageObject> pickVals = new List<OpportunityKanbanController.stageObject>();
+
+    }
+    public class stageObject{
+        @AuraEnabled
+        public String stage = '';
+        @AuraEnabled
+        public Integer noRecords = 0;
+    }
+}
